@@ -1,9 +1,8 @@
-import dotenv from "dotenv";
-dotenv.config();
-
-import express from "express";
-import cors from "cors";
-import { prisma } from "./lib/prisma.js";
+import "./env.js"
+import express from "express"
+import cors from "cors"
+import { prisma } from "./lib/prisma.js"
+import { clerkMiddleware } from "@clerk/express"
 
 const app = express();
 
