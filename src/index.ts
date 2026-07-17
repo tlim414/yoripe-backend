@@ -7,17 +7,21 @@ import cors from "cors"
 import { prisma } from "./lib/prisma.js"
 // Clerk Auth
 import { clerkMiddleware, getAuth } from "@clerk/express"
+// Frontend port default to 5050
+const PORT = process.env.PORT || 5050;
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL,
+  credentials: true,
+}));
 
 app.use(express.json());
 
 app.use(clerkMiddleware());
 
-// Frontend port default to 5050
-const PORT = process.env.PORT || 5050;
+
 
 // Unauthorized msg
 const UNAUTHORIZED = `Unauthorized`;
@@ -122,7 +126,9 @@ app.get("/recipes", async (req, res) => {
     return res.status(401).json({ error: UNAUTHORIZED });
   }
 
-  const { search, title, ingredient } = req.query;
+  const { q, by } = req.query;
+  const searchString = q as string;
+  const searchType = by as string;
 
   // Default filtering by signed in user
   const whereAnd: any[] = [
@@ -133,57 +139,59 @@ app.get("/recipes", async (req, res) => {
 
   // If general search query, filter by given search string by matching to either title,
   // description or ingredient names
-  if (search) {
-    whereAnd.push({
-      OR: [
-        {
-          title: {
-            contains: search as string,
-            mode: "insensitive",
-          },
+  if (searchString && searchString.trim() !== "") {
+
+    if (searchType === "title") {
+      // Filter by title only
+      whereAnd.push({
+        title: {
+          contains: searchString,
+          mode: "insensitive",
         },
-        {
-          description: {
-            contains: search as string,
-            mode: "insensitive",
-          },
-        },
-        {
-          ingredients: {
-            some: {
-              name: {
-                contains: search as string,
-                mode: "insensitive",
-              },
+      });
+
+    } else if (searchType === "ingredient") {
+      // Filter by ingredients only
+      whereAnd.push({
+        ingredients: {
+          some: {
+            name: {
+              contains: searchString,
+              mode: "insensitive",
             },
           },
         },
-      ],
-    });
-  }
+      });
 
-  // If filtering by title
-  if (title) {
-    whereAnd.push({
-      title: {
-        contains: title as string,
-        mode: "insensitive",
-      },
-    });
-  }
-
-  // If filtering by ingrediendts
-  if (ingredient) {
-    whereAnd.push({
-      ingredients: {
-        some: {
-          name: {
-            contains: ingredient as string,
-            mode: "insensitive",
+    } else {
+      // Else search by all
+      whereAnd.push({
+        OR: [
+          {
+            title: {
+              contains: searchString,
+              mode: "insensitive",
+            },
           },
-        },
-      },
-    })
+          {
+            description: {
+              contains: searchString,
+              mode: "insensitive",
+            },
+          },
+          {
+            ingredients: {
+              some: {
+                name: {
+                  contains: searchString,
+                  mode: "insensitive",
+                },
+              },
+            },
+          },
+        ],
+      });
+    }
   }
 
   try {
@@ -254,7 +262,7 @@ app.get("/recipes/:id", async (req, res) => {
     res.status(200).json(recipe);
   } catch (error) {
     const errorMsg = `Failed to retrieve recipe ${id}`;
-  
+
     console.log(errorMsg);
     console.log(error);
 
@@ -339,7 +347,7 @@ app.delete("/recipes/:id", async (req, res) => {
   if (!userId) {
     return res.status(401).json({ error: UNAUTHORIZED });
   }
-  
+
   const { id } = req.params;
 
   try {
