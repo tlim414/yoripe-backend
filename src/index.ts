@@ -47,6 +47,11 @@ app.get("/", async (req, res) => {
   });
 });
 
+interface IngredientInput {
+  name: string,
+  unit: string,
+  amount: string | number,
+}
 /**
  *------------------------------- CREATE -------------------------------
  */
@@ -64,9 +69,15 @@ app.post("/recipes", async (req, res) => {
     return res.status(401).json({ error: UNAUTHORIZED });
   }
 
+  // Parse required params from request body
+  const title = req.body.title as string;
+  const description = req.body.description as string;
+  const instructions = req.body.instructions as string[];
+  const ingredients = req.body.ingredients as IngredientInput[];
+
   try {
-    // Parse required params from request body
-    const { title, description, instructions, ingredients } = req.body;
+
+
 
     const newRecipe = await prisma.recipe.create({
       data: {
@@ -75,7 +86,11 @@ app.post("/recipes", async (req, res) => {
         description,
         instructions,
         ingredients: {
-          create: ingredients,
+          create: ingredients.map((ing) => ({
+            name: ing.name,
+            unit: ing.unit,
+            amount: Number(ing.amount),
+          })),
         },
       },
       include: {
@@ -294,7 +309,10 @@ app.patch("/recipes/:id", async (req, res) => {
   }
 
   const { id } = req.params;
-  const { title, description, instructions } = req.body;
+  const title = req.body.title as string;
+  const description = req.body.description as string;
+  const instructions = req.body.instructions as string[];
+  const ingredients = req.body.ingredients as IngredientInput[];
 
   try {
     const updatedRecipe = await prisma.recipe.update({
@@ -306,6 +324,16 @@ app.patch("/recipes/:id", async (req, res) => {
         title,
         description,
         instructions,
+        ...(ingredients && {
+          ingredients: {
+            deleteMany: {},
+            create: ingredients.map((ing) => ({
+              name: ing.name,
+              unit: ing.unit,
+              amount: Number(ing.amount), 
+            })),
+          },
+        }),
       },
       include: {
         ingredients: true,
@@ -347,7 +375,6 @@ app.delete("/recipes/:id", async (req, res) => {
   if (!userId) {
     return res.status(401).json({ error: UNAUTHORIZED });
   }
-
   const { id } = req.params;
 
   try {
