@@ -1,56 +1,55 @@
-import "./env.js" // Import env variables
+import './env.js'; // Import env variables
 
-import express from "express"
-import cors from "cors"
+import express from 'express';
+import cors from 'cors';
 
 // Prisma
-import { prisma } from "./lib/prisma.js"
+import { prisma } from './lib/prisma.js';
+import { Prisma } from '@prisma/client';
 // Clerk Auth
-import { clerkMiddleware, getAuth } from "@clerk/express"
+import { clerkMiddleware, getAuth } from '@clerk/express';
 // Frontend port default to 5050
 const PORT = process.env.PORT || 5050;
 
 const app = express();
 
-app.use(cors({
-  origin: process.env.FRONTEND_URL,
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL,
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 
 app.use(clerkMiddleware());
 
-
-
 // Unauthorized msg
 const UNAUTHORIZED = `Unauthorized`;
-
 
 /**
  * RUN BACKEND
  */
 app.listen(PORT, () => {
-
   console.log(`Server running on port ${PORT}`);
-  console.log(`Databse URL: ${process.env.DATABASE_URL}`)
-  console.log(`Clerk Publishable Key: ${process.env.CLERK_PUBLISHABLE_KEY}`)
-  console.log(`Clerk Secert Key: ${process.env.CLERK_SECRET_KEY}`)
+  console.log(`Databse URL: ${process.env.DATABASE_URL}`);
+  console.log(`Clerk Publishable Key: ${process.env.CLERK_PUBLISHABLE_KEY}`);
+  console.log(`Clerk Secert Key: ${process.env.CLERK_SECRET_KEY}`);
 });
 
 /**
  * Endpoint for landing page
  */
-app.get("/", async (req, res) => {
+app.get('/', async (req, res) => {
   res.json({
     message: `Yoripe API running`,
   });
 });
 
 interface IngredientInput {
-  name: string,
-  unit: string,
-  amount: string | number,
+  name: string;
+  unit: string;
+  amount: string | number;
 }
 /**
  *------------------------------- CREATE -------------------------------
@@ -58,11 +57,11 @@ interface IngredientInput {
 
 /**
  * Endpoint for creating a new recipe
- * 
+ *
  * @param
  * @return
  */
-app.post("/recipes", async (req, res) => {
+app.post('/recipes', async (req, res) => {
   // Authorization check
   const { userId } = getAuth(req);
   if (!userId) {
@@ -76,9 +75,6 @@ app.post("/recipes", async (req, res) => {
   const ingredients = req.body.ingredients as IngredientInput[];
 
   try {
-
-
-
     const newRecipe = await prisma.recipe.create({
       data: {
         userId,
@@ -130,11 +126,11 @@ app.post("/recipes", async (req, res) => {
 /**
  * Endpoint for retreiving all recipes summarized filtering by search query to match title or
  * description
- * 
+ *
  * @param
  * @returns
  */
-app.get("/recipes", async (req, res) => {
+app.get('/recipes', async (req, res) => {
   // Authorization check
   const { userId } = getAuth(req);
   if (!userId) {
@@ -146,38 +142,35 @@ app.get("/recipes", async (req, res) => {
   const searchType = by as string;
 
   // Default filtering by signed in user
-  const whereAnd: any[] = [
+  const whereAnd: Prisma.RecipeWhereInput[] = [
     {
       userId,
-    }
+    },
   ];
 
   // If general search query, filter by given search string by matching to either title,
   // description or ingredient names
-  if (searchString && searchString.trim() !== "") {
-
-    if (searchType === "title") {
+  if (searchString && searchString.trim() !== '') {
+    if (searchType === 'title') {
       // Filter by title only
       whereAnd.push({
         title: {
           contains: searchString,
-          mode: "insensitive",
+          mode: 'insensitive',
         },
       });
-
-    } else if (searchType === "ingredient") {
+    } else if (searchType === 'ingredient') {
       // Filter by ingredients only
       whereAnd.push({
         ingredients: {
           some: {
             name: {
               contains: searchString,
-              mode: "insensitive",
+              mode: 'insensitive',
             },
           },
         },
       });
-
     } else {
       // Else search by all
       whereAnd.push({
@@ -185,13 +178,13 @@ app.get("/recipes", async (req, res) => {
           {
             title: {
               contains: searchString,
-              mode: "insensitive",
+              mode: 'insensitive',
             },
           },
           {
             description: {
               contains: searchString,
-              mode: "insensitive",
+              mode: 'insensitive',
             },
           },
           {
@@ -199,7 +192,7 @@ app.get("/recipes", async (req, res) => {
               some: {
                 name: {
                   contains: searchString,
-                  mode: "insensitive",
+                  mode: 'insensitive',
                 },
               },
             },
@@ -218,7 +211,7 @@ app.get("/recipes", async (req, res) => {
         createdAt: true,
       },
       orderBy: {
-        createdAt: "desc",
+        createdAt: 'desc',
       },
       where: whereAnd.length ? { AND: whereAnd } : undefined,
     });
@@ -229,12 +222,11 @@ app.get("/recipes", async (req, res) => {
 
     // 200 response and return recipes
     res.status(200).json(recipes);
-
   } catch (error) {
     const errorMsg = `Failed to retrieve recipes for user ${userId}`;
 
     // Log Error
-    console.log(errorMsg)
+    console.log(errorMsg);
     console.log(error);
 
     // 500 Error
@@ -246,11 +238,11 @@ app.get("/recipes", async (req, res) => {
 
 /**
  * Endpoint for retreiving detail info of a recipe
- * 
+ *
  * @param
  * @returns
  */
-app.get("/recipes/:id", async (req, res) => {
+app.get('/recipes/:id', async (req, res) => {
   // Authorization check
   const { userId } = getAuth(req);
   if (!userId) {
@@ -297,11 +289,11 @@ app.get("/recipes/:id", async (req, res) => {
 
 /**
  * Endpoint for updating title, description, or instructions of a recipe
- * 
+ *
  * @param
  * @returns
  */
-app.patch("/recipes/:id", async (req, res) => {
+app.patch('/recipes/:id', async (req, res) => {
   // Authorization check
   const { userId } = getAuth(req);
   if (!userId) {
@@ -330,7 +322,7 @@ app.patch("/recipes/:id", async (req, res) => {
             create: ingredients.map((ing) => ({
               name: ing.name,
               unit: ing.unit,
-              amount: Number(ing.amount), 
+              amount: Number(ing.amount),
             })),
           },
         }),
@@ -365,11 +357,11 @@ app.patch("/recipes/:id", async (req, res) => {
 
 /**
  * Endpoint for deleting a recipe
- * 
+ *
  * @param
  * @returns
  */
-app.delete("/recipes/:id", async (req, res) => {
+app.delete('/recipes/:id', async (req, res) => {
   // Authorization check
   const { userId } = getAuth(req);
   if (!userId) {
@@ -378,14 +370,13 @@ app.delete("/recipes/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
-
     const deletedRecipe = await prisma.recipe.delete({
       where: {
         id: id,
         userId: userId,
       },
     });
-    const msg = `Successfully deleted recipe ${id}`
+    const msg = `Successfully deleted recipe ${id}`;
 
     console.log(msg);
 
@@ -393,7 +384,7 @@ app.delete("/recipes/:id", async (req, res) => {
     res.status(200).json({
       message: msg,
       deletedRecipe,
-    })
+    });
   } catch (error) {
     const errorMsg = `Failed to delete recipe ${id}`;
 
