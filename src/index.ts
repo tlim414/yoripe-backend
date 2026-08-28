@@ -8,8 +8,23 @@ import { prisma } from './lib/prisma.js';
 import { Prisma } from '@prisma/client';
 // Clerk Auth
 import { clerkMiddleware, getAuth } from '@clerk/express';
+
+// Multer
+import multer from 'multer';
+
+// Gen AI
+import { GoogleGenAI, Type } from '@google/genai';
+
 // Frontend port default to 5050
 const PORT = process.env.PORT || 5050;
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  // Limit to 10MB files
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const app = express();
 
@@ -35,6 +50,7 @@ app.listen(PORT, () => {
   console.log(`Databse URL: ${process.env.DATABASE_URL}`);
   console.log(`Clerk Publishable Key: ${process.env.CLERK_PUBLISHABLE_KEY}`);
   console.log(`Clerk Secert Key: ${process.env.CLERK_SECRET_KEY}`);
+  console.log(`Google Gen AI API Key: ${process.env.GEMINI_API_KEY}`);
 });
 
 /**
@@ -116,6 +132,90 @@ app.post('/recipes', async (req, res) => {
     res.status(500).json({
       error: errorMsg,
     });
+  }
+});
+
+app.post('/extract-recipe-info', upload.single('image'), async (req, res) => {
+  try {
+    // Authorization check
+    const { userId } = getAuth(req);
+    if (!userId) {
+      return res.status(401).json({ error: UNAUTHORIZED });
+    }
+
+    console.log(req.file);
+    // File existence check
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file uploaded' });
+    }
+
+    // Convert image to base64
+    const base64Data = req.file.buffer.toString('base64');
+    const mimeType = req.file.mimetype;
+
+    const prompt = '';
+
+    // Call Google Gen AI vision LLM to extract recipe info as the structured json output
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.6-flash',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                data: base64Data,
+                mimeType: mimeType,
+              },
+            },
+            {
+              text: 'Extract the recipe title, description, instructions, and ingredients from this image. Return empty arrays or strings if a field cannot be determined.',
+            },
+          ],
+        },
+      ],
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            description: { type: Type.STRING },
+            instructions: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+            },
+            ingredients: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  amount: { type: Type.STRING },
+                  unit: { type: Type.STRING },
+                },
+                required: ['name', 'amount', 'unit'],
+              },
+            },
+          },
+          required: ['title', 'description', 'instructions', 'ingredients'],
+        },
+      },
+    });
+
+    if (!response.text) {
+      throw new Error('No text content returned from Gemini Vision model');
+    }
+
+    const extractedData = JSON.parse(response.text);
+    console.log(extractedData);
+
+    return res.status(200).json(extractedData);
+  } catch (error) {
+    const errorMsg = 'Failed to extract recipe from image';
+
+    console.log('Vision LLM Extraction Error:', error);
+    return res.status(500).json({ error: errorMsg });
   }
 });
 
