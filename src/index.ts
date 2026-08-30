@@ -153,7 +153,8 @@ app.post('/extract-recipe-info', upload.single('image'), async (req, res) => {
     const base64Data = req.file.buffer.toString('base64');
     const mimeType = req.file.mimetype;
 
-    const prompt = '';
+    const prompt =
+      'Extract the recipe title, description, instructions, and ingredients from this image. Return empty arrays or strings if a field cannot be determined.';
 
     // Call Google Gen AI vision LLM to extract recipe info as the structured json output
     const response = await ai.models.generateContent({
@@ -169,7 +170,7 @@ app.post('/extract-recipe-info', upload.single('image'), async (req, res) => {
               },
             },
             {
-              text: 'Extract the recipe title, description, instructions, and ingredients from this image. Return empty arrays or strings if a field cannot be determined.',
+              text: prompt,
             },
           ],
         },
