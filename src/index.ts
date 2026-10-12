@@ -14,6 +14,7 @@ import multer from 'multer';
 
 // Gen AI
 import { GoogleGenAI, Type } from '@google/genai';
+import { getOrSetCache, invalidateCache, invalidatePattern } from './services/cache.service.js';
 
 // Frontend port default to 5050
 const PORT = process.env.PORT || 5050;
@@ -51,6 +52,7 @@ app.listen(PORT, () => {
   console.log(`Clerk Publishable Key: ${process.env.CLERK_PUBLISHABLE_KEY}`);
   console.log(`Clerk Secert Key: ${process.env.CLERK_SECRET_KEY}`);
   console.log(`Google Gen AI API Key: ${process.env.GEMINI_API_KEY}`);
+  console.log(`Redis url: ${process.env.REDIS_URL}`);
 });
 
 /**
@@ -109,6 +111,9 @@ app.post('/recipes', async (req, res) => {
         ingredients: true,
       },
     });
+
+    // Invalidate cache entries
+    await invalidatePattern(`recipes:${userId}:*`);
 
     const msg = `Created new recipe for user ${userId}`;
 
@@ -239,8 +244,11 @@ app.get('/recipes', async (req, res) => {
   }
 
   const { q, by } = req.query;
-  const searchString = q as string;
-  const searchType = by as string;
+  const searchString = (q as string) || '';
+  const searchType = (by as string) || 'all';
+
+  // Cache key
+  const cacheKey = `recipes:${userId}:${searchType}:${searchString.trim().toLowerCase()}`;
 
   // Default filtering by signed in user
   const whereAnd: Prisma.RecipeWhereInput[] = [
@@ -304,18 +312,23 @@ app.get('/recipes', async (req, res) => {
   }
 
   try {
-    const recipes = await prisma.recipe.findMany({
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        createdAt: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      where: whereAnd.length ? { AND: whereAnd } : undefined,
-    });
+    const recipes = await getOrSetCache(
+      cacheKey,
+      () =>
+        prisma.recipe.findMany({
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            createdAt: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          where: whereAnd.length ? { AND: whereAnd } : undefined,
+        }),
+      300
+    );
 
     const msg = `Retrieved all recipes for user ${userId}`;
 
@@ -351,17 +364,24 @@ app.get('/recipes/:id', async (req, res) => {
   }
 
   const { id } = req.params;
+  // Cache key including userid and recipeid
+  const cacheKey = `recipe:${userId}:${id}`;
 
   try {
-    const recipe = await prisma.recipe.findUniqueOrThrow({
-      where: {
-        id: id,
-        userId: userId,
-      },
-      include: {
-        ingredients: true,
-      },
-    });
+    const recipe = await getOrSetCache(
+      cacheKey,
+      () =>
+        prisma.recipe.findUniqueOrThrow({
+          where: {
+            id: id,
+            userId: userId,
+          },
+          include: {
+            ingredients: true,
+          },
+        }),
+      1800
+    );
 
     const msg = `Retrieved recipe ${id}`;
 
@@ -369,10 +389,13 @@ app.get('/recipes/:id', async (req, res) => {
 
     res.status(200).json(recipe);
   } catch (error) {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2025') {
+      return res.status(404).json({ error: `Recipe ${id} not found` });
+    }
+
     const errorMsg = `Failed to retrieve recipe ${id}`;
 
-    console.log(errorMsg);
-    console.log(error);
+    console.log(errorMsg, error);
 
     res.status(500).json({
       error: errorMsg,
@@ -433,6 +456,9 @@ app.patch('/recipes/:id', async (req, res) => {
       },
     });
 
+    await invalidateCache(`recipe:${userId}:${id}`);
+    await invalidatePattern(`recipes:${userId}:*`);
+
     const msg = `Updated recipe ${id}`;
     console.log(msg);
 
@@ -441,6 +467,10 @@ app.patch('/recipes/:id', async (req, res) => {
       updatedRecipe,
     });
   } catch (error) {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2025') {
+      return res.status(404).json({ error: `Recipe ${id} not found` });
+    }
+
     const errorMsg = `Failed to update recipe ${id}`;
 
     console.log(errorMsg);
@@ -477,6 +507,11 @@ app.delete('/recipes/:id', async (req, res) => {
         userId: userId,
       },
     });
+
+    // Invalidate cache
+    await invalidateCache(`recipe:${userId}:${id}`);
+    await invalidatePattern(`recipes:${userId}:*`);
+
     const msg = `Successfully deleted recipe ${id}`;
 
     console.log(msg);
@@ -487,6 +522,10 @@ app.delete('/recipes/:id', async (req, res) => {
       deletedRecipe,
     });
   } catch (error) {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2025') {
+      return res.status(404).json({ error: `Recipe ${id} not found` });
+    }
+
     const errorMsg = `Failed to delete recipe ${id}`;
 
     // Log error
