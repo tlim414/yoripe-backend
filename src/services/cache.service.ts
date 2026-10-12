@@ -14,12 +14,15 @@ export async function getOrSetCache<T>(
   cb: () => Promise<T>,
   ttlSeconds: number = DEFAULT_TTL
 ): Promise<T> {
+  const start = performance.now();
+
   try {
     // If redis is online try getting cached data
     if (redis.status === 'ready') {
       const cachedData = await redis.get(key);
       if (cachedData) {
-        console.log(`Cache Hit: ${key}`);
+        const duration = (performance.now() - start).toFixed(2);
+        console.log(`[CACHE HIT] Key: "${key}" | Server Execution: ${duration}ms`);
         return JSON.parse(cachedData) as T;
       }
     } else {
@@ -33,6 +36,8 @@ export async function getOrSetCache<T>(
 
   // Cache miss: Query postgres db
   const freshData = await cb();
+  const duration = (performance.now() - start).toFixed(2);
+  console.log(`[CACHE MISS -> DB FETCH] Key: "${key}" | Server Execution: ${duration}ms`);
 
   // Set cache to fetched data
   if (freshData !== null && freshData !== undefined) {
