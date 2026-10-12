@@ -14,6 +14,9 @@ import multer from 'multer';
 
 // Gen AI
 import { GoogleGenAI, Type } from '@google/genai';
+
+// Redis
+import { redis } from './lib/redis.js';
 import { getOrSetCache, invalidateCache, invalidatePattern } from './services/cache.service.js';
 
 // Frontend port default to 5050
@@ -536,5 +539,26 @@ app.delete('/recipes/:id', async (req, res) => {
     res.status(500).json({
       error: errorMsg,
     });
+  }
+});
+
+/**
+ *------------------------------- CACHE -------------------------------
+ */
+
+/**
+ * Endpoint to flush cache for metrics
+ */
+app.post('/flush-cache', async (req, res) => {
+  const { userId } = getAuth(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    await redis.flushall();
+    console.log('Redis cache flushed completely');
+    return res.status(200).json({ message: 'Redis flushed successfully' });
+  } catch (error) {
+    console.error('Failed to flush Redis:', error);
+    return res.status(500).json({ error: 'Failed to flush Redis' });
   }
 });
